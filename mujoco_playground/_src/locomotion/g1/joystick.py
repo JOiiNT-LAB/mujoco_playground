@@ -1,17 +1,17 @@
-# Copyright 2026 Google LLC
+# Copyright 2025 DeepMind Technologies Limited
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     https://www.apache.org/licenses/LICENSE-2.0
+#     http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+# ==============================================================================
 """Joystick task for Unitree G1."""
 
 from typing import Any, Dict, Optional, Union
@@ -56,14 +56,14 @@ def default_config() -> config_dict.ConfigDict:
               tracking_ang_vel=0.75,
               # Base related rewards.
               lin_vel_z=0.0,
-              ang_vel_xy=-0.15,
-              orientation=-2.0,
+              ang_vel_xy=-0.25,
+              orientation=-2.5,
               base_height=0.0,
               # Energy related rewards.
-              torques=0.0,
-              action_rate=0.0,
-              energy=0.0,
-              dof_acc=0.0,
+              torques=-0.0001,  
+              action_rate=-0.02,
+              energy=-0.003,
+              dof_acc=-0.000002,
               # Feet related rewards.
               feet_clearance=0.0,
               feet_air_time=2.0,
@@ -72,7 +72,7 @@ def default_config() -> config_dict.ConfigDict:
               feet_phase=1.0,
               # Other rewards.
               alive=0.0,
-              stand_still=-1.0,
+              stand_still=-1.5,
               termination=-100.0,
               collision=-0.1,
               contact_force=-0.01,
@@ -80,7 +80,7 @@ def default_config() -> config_dict.ConfigDict:
               joint_deviation_knee=-0.1,
               joint_deviation_hip=-0.25,
               dof_pos_limits=-1.0,
-              pose=-0.1,
+              pose=-0.2,
           ),
           tracking_sigma=0.25,
           max_foot_height=0.15,
@@ -659,7 +659,7 @@ class Joystick(g1_base.G1Env):
     return jp.sum(jp.abs(error))
 
   def _cost_pose(self, qpos: jax.Array) -> jax.Array:
-    return jp.sum(jp.square(qpos - self._default_pose))
+    return jp.sum(jp.square(qpos - self._default_pose) * self._weights)
 
   def _cost_joint_pos_limits(self, qpos: jax.Array) -> jax.Array:
     out_of_limits = -jp.clip(qpos - self._soft_lowers, None, 0.0)
@@ -741,13 +741,11 @@ class Joystick(g1_base.G1Env):
 
   # Feet related rewards.
 
-  def _cost_feet_slip(
-      self, data: mjx.Data, contact: jax.Array, info: dict[str, Any]
-  ) -> jax.Array:
-    del info  # Unused.
-    body_vel = self.get_global_linvel(data, "pelvis")[:2]
-    reward = jp.sum(jp.linalg.norm(body_vel, axis=-1) * contact)
-    return reward
+  def _cost_feet_slip(self, data, contact, info):
+    del info
+    feet_vel = data.sensordata[self._foot_linvel_sensor_adr]
+    vel_xy = feet_vel[..., :2]
+    return jp.sum(jp.linalg.norm(vel_xy, axis=-1) * contact)
 
   def _cost_feet_clearance(
       self, data: mjx.Data, info: dict[str, Any]
