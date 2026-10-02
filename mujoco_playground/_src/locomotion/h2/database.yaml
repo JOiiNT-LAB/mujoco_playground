@@ -1,0 +1,18 @@
+waist_joint_names:
+  - waist_yaw
+  - waist_pitch
+  - waist_roll
+
+arm_joint_names:
+  - shoulder_roll
+  - shoulder_yaw
+  - wrist_roll
+  - wrist_pitch
+  - wrist_yaw
+
+hip_joint_names:
+  - hip_roll
+  - hip_yaw
+
+knee_joint_names:
+  - knee
