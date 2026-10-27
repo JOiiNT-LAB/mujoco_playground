@@ -28,6 +28,8 @@ from mujoco_playground._src.locomotion.berkeley_humanoid import joystick as berk
 from mujoco_playground._src.locomotion.berkeley_humanoid import randomize as berkeley_humanoid_randomize
 from mujoco_playground._src.locomotion.g1 import joystick as g1_joystick
 from mujoco_playground._src.locomotion.g1 import randomize as g1_randomize
+from mujoco_playground._src.locomotion.h2 import joystick as h2_joystick
+from mujoco_playground._src.locomotion.h2 import randomize as h2_randomize
 from mujoco_playground._src.locomotion.go1 import getup as go1_getup
 from mujoco_playground._src.locomotion.go1 import handstand as go1_handstand
 from mujoco_playground._src.locomotion.go1 import joystick as go1_joystick
@@ -58,6 +60,12 @@ _envs = {
     ),
     "G1JoystickRoughTerrain": functools.partial(
         g1_joystick.Joystick, task="rough_terrain"
+    ),
+    "H2JoystickFlatTerrain": functools.partial(
+        h2_joystick.Joystick, task="flat_terrain"
+    ),
+    "H2JoystickRoughTerrain": functools.partial(
+        h2_joystick.Joystick, task="rough_terrain"
     ),
     "Go1JoystickFlatTerrain": functools.partial(
         go1_joystick.Joystick, task="flat_terrain"
@@ -97,6 +105,8 @@ _cfgs = {
     ),
     "G1JoystickFlatTerrain": g1_joystick.default_config,
     "G1JoystickRoughTerrain": g1_joystick.default_config,
+    "H2JoystickFlatTerrain": h2_joystick.default_config,
+    "H2JoystickRoughTerrain": h2_joystick.default_config,
     "Go1JoystickFlatTerrain": go1_joystick.default_config,
     "Go1JoystickRoughTerrain": go1_joystick.default_config,
     "Go1Getup": go1_getup.default_config,
@@ -121,6 +131,8 @@ _randomizer = {
     ),
     "G1JoystickFlatTerrain": g1_randomize.domain_randomize,
     "G1JoystickRoughTerrain": g1_randomize.domain_randomize,
+    "H2JoystickFlatTerrain": h2_randomize.domain_randomize,
+    "H2JoystickRoughTerrain": h2_randomize.domain_randomize,
     "Go1JoystickFlatTerrain": go1_randomize.domain_randomize,
     "Go1JoystickRoughTerrain": go1_randomize.domain_randomize,
     "Go1Getup": go1_randomize.domain_randomize,

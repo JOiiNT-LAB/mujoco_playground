@@ -93,7 +93,12 @@ def brax_ppo_config(
         value_obs_key="privileged_state",
     )
 
-  elif env_name in ("G1JoystickFlatTerrain", "G1JoystickRoughTerrain"):
+  elif env_name in (
+      "G1JoystickFlatTerrain",
+      "G1JoystickRoughTerrain",
+      "H2JoystickFlatTerrain",
+      "H2JoystickRoughTerrain",
+  ):
     rl_config.num_timesteps = 200_000_000
     rl_config.num_evals = 20
     rl_config.clipping_epsilon = 0.2

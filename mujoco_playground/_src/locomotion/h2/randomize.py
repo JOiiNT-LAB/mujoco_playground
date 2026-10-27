@@ -16,6 +16,7 @@
 import jax
 from mujoco import mjx
 
+# H2: same as G1 (geom 0 = floor, body 16 = torso_link, pairs 0/1 = feet-floor).
 FLOOR_GEOM_ID = 0
 TORSO_BODY_ID = 16
 
@@ -30,15 +31,16 @@ def domain_randomize(model: mjx.Model, rng: jax.Array):
 
     # Scale static friction: *U(0.9, 1.1).
     rng, key = jax.random.split(rng)
+    # H2: 31 joints (G1: 29), including the head.
     frictionloss = model.dof_frictionloss[6:] * jax.random.uniform(
-        key, shape=(29,), minval=0.5, maxval=2.0
+        key, shape=(31,), minval=0.5, maxval=2.0
     )
     dof_frictionloss = model.dof_frictionloss.at[6:].set(frictionloss)
 
     # Scale armature: *U(1.0, 1.05).
     rng, key = jax.random.split(rng)
     armature = model.dof_armature[6:] * jax.random.uniform(
-        key, shape=(29,), minval=1.0, maxval=1.05
+        key, shape=(31,), minval=1.0, maxval=1.05
     )
     dof_armature = model.dof_armature.at[6:].set(armature)
 
@@ -61,7 +63,7 @@ def domain_randomize(model: mjx.Model, rng: jax.Array):
     qpos0 = model.qpos0
     qpos0 = qpos0.at[7:].set(
         qpos0[7:]
-        + jax.random.uniform(key, shape=(29,), minval=-0.05, maxval=0.05)
+        + jax.random.uniform(key, shape=(31,), minval=-0.05, maxval=0.05)
     )
 
     return (

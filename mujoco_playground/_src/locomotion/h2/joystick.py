@@ -14,7 +14,6 @@
 # ==============================================================================
 """Joystick task for Unitree H2."""
 
-from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
 import jax
@@ -23,7 +22,6 @@ from ml_collections import config_dict
 from mujoco import mjx
 from mujoco.mjx._src import math
 import numpy as np
-import yaml
 
 from mujoco_playground._src import gait
 from mujoco_playground._src import mjx_env
@@ -87,7 +85,8 @@ def default_config() -> config_dict.ConfigDict:
           tracking_sigma=0.25,
           max_foot_height=0.15,
           base_height_target=0.5,
-          max_contact_force=500.0,
+          # H2: G1's 500 N scaled for the ~2.2x heavier robot.
+          max_contact_force=1100.0,
       ),
       push_config=config_dict.create(
           enable=True,
@@ -105,7 +104,8 @@ def default_config() -> config_dict.ConfigDict:
       ang_vel_yaw=[-1.0, 1.0],
       impl="warp",
       naconmax=8 * 8192,
-      njmax=29 * 2 + 8 * 4,
+      # H2: 31 joints (G1: 29).
+      njmax=31 * 2 + 8 * 4,
   )
 
 
@@ -114,7 +114,7 @@ class Joystick(h2_base.H2Env):
 
   def __init__(
       self,
-      task: str = "basic_scene",
+      task: str = "flat_terrain",
       config: config_dict.ConfigDict = default_config(),
       config_overrides: Optional[Dict[str, Union[str, int, list[Any]]]] = None,
   ):
@@ -125,57 +125,71 @@ class Joystick(h2_base.H2Env):
     )
     self._post_init()
 
+  # H2: 29 actions, all joints except the head (nu = 31).
+  @property
+  def action_size(self) -> int:
+    return len(self._policy_joint_ids)
+
   def _post_init(self) -> None:
+    # H2: the policy drives all joints except the head, which is held at the
+    # keyframe pose. _policy_joint_ids[p] is the model index of policy joint p.
+    head_joint_ids = [
+        self._mj_model.joint(f"{name}_joint").qposadr[0] - 7
+        for name in consts.HEAD_JOINT_NAMES
+    ]
+    self._policy_joint_ids = np.array(
+        [i for i in range(self._mj_model.nu) if i not in head_joint_ids]
+    )
+    model_to_policy = {int(m): p for p, m in enumerate(self._policy_joint_ids)}
+
     self._init_q = jp.array(self._mj_model.keyframe("knees_bent").qpos)
-    self._default_pose = jp.array(
+    # H2: full ctrl (31, model order); the head targets stay at these values.
+    self._default_ctrl = jp.array(
         self._mj_model.keyframe("knees_bent").qpos[7:]
     )
+    self._default_pose = self._default_ctrl[self._policy_joint_ids]
 
     # Note: First joint is freejoint.
-    self._lowers, self._uppers = self.mj_model.jnt_range[1:].T
+    self._lowers, self._uppers = self.mj_model.jnt_range[1:][
+        self._policy_joint_ids
+    ].T
     c = (self._lowers + self._uppers) / 2
     r = self._uppers - self._lowers
     self._soft_lowers = c - 0.5 * r * self._config.soft_joint_pos_limit_factor
     self._soft_uppers = c + 0.5 * r * self._config.soft_joint_pos_limit_factor
 
-    # Load joints database configuration
-    db_path = Path(__file__).parent / "database.yaml"
-    with open(db_path, "r", encoding="utf-8") as f:
-      database = yaml.safe_load(f)
-
+    # H2: group indices are policy indices (same values as G1). qposadr[0]
+    # keeps them 1-D; G1's (n, 1) arrays make _cost_joint_deviation_hip
+    # broadcast its weights into a 4x4 matrix.
     waist_indices = []
-    waist_joint_names = database.get("waist_joint_names", [])
-    for joint_name in waist_joint_names:
-      waist_indices.append(
-          self._mj_model.joint(f"{joint_name}_joint").qposadr - 7
-      )
+    for joint_name in consts.WAIST_JOINT_NAMES:
+      waist_indices.append(model_to_policy[
+          self._mj_model.joint(f"{joint_name}_joint").qposadr[0] - 7
+      ])
     self._waist_indices = jp.array(waist_indices)
 
     arm_indices = []
-    arm_joint_names = database.get("arm_joint_names", [])
     for side in ["left", "right"]:
-      for joint_name in arm_joint_names:
-        arm_indices.append(
-            self._mj_model.joint(f"{side}_{joint_name}_joint").qposadr - 7
-        )
+      for joint_name in consts.ARM_JOINT_NAMES:
+        arm_indices.append(model_to_policy[
+            self._mj_model.joint(f"{side}_{joint_name}_joint").qposadr[0] - 7
+        ])
     self._arm_indices = jp.array(arm_indices)
 
     hip_indices = []
-    hip_joint_names = database.get("hip_joint_names", [])
     for side in ["left", "right"]:
-      for joint_name in hip_joint_names:
-        hip_indices.append(
-            self._mj_model.joint(f"{side}_{joint_name}_joint").qposadr - 7
-        )
+      for joint_name in consts.HIP_JOINT_NAMES:
+        hip_indices.append(model_to_policy[
+            self._mj_model.joint(f"{side}_{joint_name}_joint").qposadr[0] - 7
+        ])
     self._hip_indices = jp.array(hip_indices)
 
     knee_indices = []
-    knee_joint_names = database.get("knee_joint_names", [])
     for side in ["left", "right"]:
-      for joint_name in knee_joint_names:
-        knee_indices.append(
-            self._mj_model.joint(f"{side}_{joint_name}_joint").qposadr - 7
-        )
+      for joint_name in consts.KNEE_JOINT_NAMES:
+        knee_indices.append(model_to_policy[
+            self._mj_model.joint(f"{side}_{joint_name}_joint").qposadr[0] - 7
+        ])
     self._knee_indices = jp.array(knee_indices)
 
     # fmt: off
@@ -261,9 +275,12 @@ class Joystick(h2_base.H2Env):
     qpos = qpos.at[3:7].set(new_quat)
 
     # qpos[7:]=*U(0.5, 1.5)
+    # H2: policy joints only; the head keeps its keyframe pose.
     rng, key = jax.random.split(rng)
-    qpos = qpos.at[7:].set(
-        qpos[7:] * jax.random.uniform(key, (29,), minval=0.5, maxval=1.5)
+    policy_qpos_ids = 7 + self._policy_joint_ids
+    qpos = qpos.at[policy_qpos_ids].set(
+        qpos[policy_qpos_ids]
+        * jax.random.uniform(key, (29,), minval=0.5, maxval=1.5)
     )
 
     # d(xyzrpy)=U(-0.5, 0.5)
@@ -305,8 +322,8 @@ class Joystick(h2_base.H2Env):
         "rng": rng,
         "step": 0,
         "command": cmd,
-        "last_act": jp.zeros(self.mjx_model.nu),
-        "last_last_act": jp.zeros(self.mjx_model.nu),
+        "last_act": jp.zeros(self.action_size),
+        "last_last_act": jp.zeros(self.action_size),
         "motor_targets": jp.zeros(self.mjx_model.nu),
         "feet_air_time": jp.zeros(2),
         "last_contact": jp.zeros(2, dtype=bool),
@@ -354,7 +371,10 @@ class Joystick(h2_base.H2Env):
     data = state.data.replace(qvel=qvel)
     state = state.replace(data=data)  # pyrefly: ignore[missing-attribute]
 
-    motor_targets = self._default_pose + action * self._config.action_scale
+    # H2: actions move the policy joints; the head targets stay unchanged.
+    motor_targets = self._default_ctrl.at[self._policy_joint_ids].add(
+        action * self._config.action_scale
+    )
     data = mjx_env.step(
         self.mjx_model, state.data, motor_targets, self.n_substeps
     )
@@ -465,7 +485,7 @@ class Joystick(h2_base.H2Env):
         * self._config.noise_config.scales.gravity
     )
 
-    joint_angles = data.qpos[7:]
+    joint_angles = data.qpos[7:][self._policy_joint_ids]
     info["rng"], noise_rng = jax.random.split(info["rng"])
     noisy_joint_angles = (
         joint_angles
@@ -474,7 +494,7 @@ class Joystick(h2_base.H2Env):
         * self._config.noise_config.scales.joint_pos
     )
 
-    joint_vel = data.qvel[6:]
+    joint_vel = data.qvel[6:][self._policy_joint_ids]
     info["rng"], noise_rng = jax.random.split(info["rng"])
     noisy_joint_vel = (
         joint_vel
@@ -522,9 +542,9 @@ class Joystick(h2_base.H2Env):
         joint_angles - self._default_pose,
         joint_vel,
         root_height,  # 1
-        data.actuator_force,  # 29
+        data.actuator_force[self._policy_joint_ids],  # 29
         contact,  # 2
-        feet_vel,  # 4*3
+        feet_vel,  # 2*3
         info["feet_air_time"],  # 2
     ])
 
@@ -544,6 +564,11 @@ class Joystick(h2_base.H2Env):
       contact: jax.Array,
   ) -> dict[str, jax.Array]:
     del metrics  # Unused.
+    # H2: joint terms use the 29 policy joints, as in G1.
+    qpos = data.qpos[7:][self._policy_joint_ids]
+    qvel = data.qvel[6:][self._policy_joint_ids]
+    qacc = data.qacc[6:][self._policy_joint_ids]
+    actuator_force = data.actuator_force[self._policy_joint_ids]
     return {
         # Tracking rewards.
         "tracking_lin_vel": self._reward_tracking_lin_vel(
@@ -563,12 +588,12 @@ class Joystick(h2_base.H2Env):
         "orientation": self._cost_orientation(self.get_gravity(data, "torso")),
         "base_height": self._cost_base_height(data.qpos[2]),
         # Energy related rewards.
-        "torques": self._cost_torques(data.actuator_force),
+        "torques": self._cost_torques(actuator_force),
         "action_rate": self._cost_action_rate(
             action, info["last_act"], info["last_last_act"]
         ),
-        "energy": self._cost_energy(data.qvel[6:], data.actuator_force),
-        "dof_acc": self._cost_dof_acc(data.qacc[6:]),
+        "energy": self._cost_energy(qvel, actuator_force),
+        "dof_acc": self._cost_dof_acc(qacc),
         # Feet related rewards.
         "feet_slip": self._cost_feet_slip(data, contact, info),
         "feet_clearance": self._cost_feet_clearance(data, info),
@@ -587,16 +612,16 @@ class Joystick(h2_base.H2Env):
         # Other rewards.
         "alive": self._reward_alive(),
         "termination": self._cost_termination(done),
-        "stand_still": self._cost_stand_still(info["command"], data.qpos[7:]),
+        "stand_still": self._cost_stand_still(info["command"], qpos),
         "collision": self._cost_collision(data),
         "contact_force": self._cost_contact_force(data),
         # Pose related rewards.
         "joint_deviation_hip": self._cost_joint_deviation_hip(
-            data.qpos[7:], info["command"]
+            qpos, info["command"]
         ),
-        "joint_deviation_knee": self._cost_joint_deviation_knee(data.qpos[7:]),
-        "dof_pos_limits": self._cost_joint_pos_limits(data.qpos[7:]),
-        "pose": self._cost_pose(data.qpos[7:]),
+        "joint_deviation_knee": self._cost_joint_deviation_knee(qpos),
+        "dof_pos_limits": self._cost_joint_pos_limits(qpos),
+        "pose": self._cost_pose(qpos),
     }
 
   def _cost_contact_force(self, data: mjx.Data) -> jax.Array:

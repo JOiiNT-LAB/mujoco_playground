@@ -39,7 +39,7 @@ except ImportError:
   EXTERNAL_DEPS_PATH = epath.Path(__file__).parent.parent / "external_deps"
   MENAGERIE_PATH = EXTERNAL_DEPS_PATH / "mujoco_menagerie"
 # Commit SHA of the menagerie repo.
-MENAGERIE_COMMIT_SHA = "1b86ece576591213e2b666ebf59508454200ca97"
+MENAGERIE_COMMIT_SHA = "d2c59117d80845427d4c38d4f0306c7cd39a0103"
 
 
 def _clone_with_progress(
@@ -101,7 +101,7 @@ def ensure_menagerie_exists() -> None:
 
     try:
       _clone_with_progress(
-          "https://github.com/deepmind/mujoco_menagerie.git",
+          "https://github.com/JOiiNT-LAB/mujoco_menagerie.git",
           str(MENAGERIE_PATH),
           MENAGERIE_COMMIT_SHA,
       )

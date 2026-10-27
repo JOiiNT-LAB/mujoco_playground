@@ -41,6 +41,3 @@ tensorboard --logdir ./logs/g1_baseline_resumed --bind_all
 
 
 
-
-
-

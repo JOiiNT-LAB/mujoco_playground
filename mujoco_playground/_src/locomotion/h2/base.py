@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Base classes for G1."""
+"""Base classes for H2."""
 
 from typing import Any, Dict, Optional, Union
 
@@ -23,21 +23,21 @@ import mujoco
 from mujoco import mjx
 
 from mujoco_playground._src import mjx_env
-from mujoco_playground._src.locomotion.g1 import g1_constants as consts
+from mujoco_playground._src.locomotion.h2 import h2_constants as consts
 
 
 def get_assets() -> Dict[str, bytes]:
   assets = {}
   mjx_env.update_assets(assets, consts.ROOT_PATH / "xmls", "*.xml")
   mjx_env.update_assets(assets, consts.ROOT_PATH / "xmls" / "assets")
-  path = mjx_env.MENAGERIE_PATH / "unitree_g1"
+  path = mjx_env.MENAGERIE_PATH / "unitree_h2"
   mjx_env.update_assets(assets, path, "*.xml")
   mjx_env.update_assets(assets, path / "assets")
   return assets
 
 
-class G1Env(mjx_env.MjxEnv):
-  """Base class for G1 environments."""
+class H2Env(mjx_env.MjxEnv):
+  """Base class for H2 environments."""
 
   def __init__(
       self,

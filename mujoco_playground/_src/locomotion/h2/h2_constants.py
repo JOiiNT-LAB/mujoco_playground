@@ -44,95 +44,77 @@ HAND_SITES = [
     "right_palm",
 ]
 
-LEFT_FEET_GEOMS = ["left_ankle_pitch_link"]
-RIGHT_FEET_GEOMS = ["right_ankle_pitch_link"]
+LEFT_FEET_GEOMS = ["left_foot"]
+RIGHT_FEET_GEOMS = ["right_foot"]
 FEET_GEOMS = LEFT_FEET_GEOMS + RIGHT_FEET_GEOMS
 
-ROOT_BODY = "pelvis"
+ROOT_BODY = "torso_link"
 
 GRAVITY_SENSOR = "upvector"
 GLOBAL_LINVEL_SENSOR = "global_linvel"
 GLOBAL_ANGVEL_SENSOR = "global_angvel"
 LOCAL_LINVEL_SENSOR = "local_linvel"
-ACCELEROMETER_SENSOR = "imu_acc"
-GYRO_SENSOR = "imu_gyro"
+ACCELEROMETER_SENSOR = "accelerometer"
+GYRO_SENSOR = "gyro"
 
-# Joints in order:
-#    0: left_hip_pitch_joint
-#    1: left_hip_roll_joint
-#    2: left_hip_yaw_joint
-#    3: left_knee_joint
-#    4: left_ankle_roll_joint
-#    5: left_ankle_pitch_joint
-#    6: right_hip_pitch_joint
-#    7: right_hip_roll_joint
-#    8: right_hip_yaw_joint
-#    9: right_knee_joint
-#   10: right_ankle_roll_joint
-#   11: right_ankle_pitch_joint
-#   12: waist_yaw_joint
-#   13: waist_roll_joint
-#   14: waist_pitch_joint
-#   15: head_pitch_joint
-#   16: head_yaw_joint
-#   17: left_shoulder_pitch_joint
-#   18: left_shoulder_roll_joint
-#   19: left_shoulder_yaw_joint
-#   20: left_elbow_joint
-#   21: left_wrist_roll_joint
-#   22: left_wrist_pitch_joint
-#   23: left_wrist_yaw_joint
-#   24: right_shoulder_pitch_joint
-#   25: right_shoulder_roll_joint
-#   26: right_shoulder_yaw_joint
-#   27: right_elbow_joint
-#   28: right_wrist_roll_joint
-#   29: right_wrist_pitch_joint
-#   30: right_wrist_yaw_joint
+# Joint indices. Model index i (0-30) is qpos[7 + i], qvel[6 + i], ctrl[i]
+# (order in RESTRICTED_JOINT_RANGE). The joystick policy drives the 29 joints
+# without the head: policy index p = model index for p <= 14, p + 2 for the
+# arms. p is the same joint as G1's index p, except the ankles: 4/10 are roll
+# and 5/11 pitch (G1: pitch, roll).
+
+# Joint groups used by joystick.py, as in g1/joystick.py.
+WAIST_JOINT_NAMES = ["waist_yaw", "waist_roll", "waist_pitch"]
+ARM_JOINT_NAMES = [
+    "shoulder_roll",
+    "shoulder_yaw",
+    "wrist_roll",
+    "wrist_pitch",
+    "wrist_yaw",
+]
+HIP_JOINT_NAMES = ["hip_roll", "hip_yaw"]
+KNEE_JOINT_NAMES = ["knee"]
+# Held at the keyframe pose; not controlled by the joystick policy.
+HEAD_JOINT_NAMES = ["head_pitch", "head_yaw"]
+
+# UNSURE: these are the full joint ranges (no restriction yet). Only used when
+# restricted_joint_range=True.
 RESTRICTED_JOINT_RANGE = (
-    # Left hip.
-    (-2.4526, 2.77542),  # left_hip_pitch_joint
-    (-0.467441, 2.16886),  # left_hip_roll_joint
-    (-2.827, 2.827),  # left_hip_yaw_joint
-    # Left.
-    (-0.08725, 2.53025),  # left_knee_joint
-    # Left ankle.
-    (-0.349066, 0.296706),  # left_ankle_roll_joint
-    (-1.13446, 0.610865),  # left_ankle_pitch_joint
-    # Right hip.
-    (-2.4526, 2.77542),  # right_hip_pitch_joint
-    (-2.16886, 0.467441),  # right_hip_roll_joint
-    (-2.827, 2.827),  # right_hip_yaw_joint
-    # Right.
-    (-0.08725, 2.53025),  # right_knee_joint
-    # Right ankle.
-    (-0.296706, 0.349066),  # right_ankle_roll_joint
-    (-1.13446, 0.610865),  # right_ankle_pitch_joint
+    # Left leg.
+    (-2.4526, 2.77542),  #  0: left_hip_pitch_joint
+    (-0.467441, 2.16886),  #  1: left_hip_roll_joint
+    (-2.827, 2.827),  #  2: left_hip_yaw_joint
+    (-0.08725, 2.53025),  #  3: left_knee_joint
+    (-0.349066, 0.296706),  #  4: left_ankle_roll_joint
+    (-1.13446, 0.610865),  #  5: left_ankle_pitch_joint
+    # Right leg.
+    (-2.4526, 2.77542),  #  6: right_hip_pitch_joint
+    (-2.16886, 0.467441),  #  7: right_hip_roll_joint
+    (-2.827, 2.827),  #  8: right_hip_yaw_joint
+    (-0.08725, 2.53025),  #  9: right_knee_joint
+    (-0.296706, 0.349066),  # 10: right_ankle_roll_joint
+    (-1.13446, 0.610865),  # 11: right_ankle_pitch_joint
     # Waist.
-    (-1.7453, 1.7453),  # waist_yaw_joint
-    (-0.5236, 0.5236),  # waist_roll_joint
-    (-0.43633, 0.5236),  # waist_pitch_joint
+    (-1.7453, 1.7453),  # 12: waist_yaw_joint
+    (-0.5236, 0.5236),  # 13: waist_roll_joint
+    (-0.43633, 0.5236),  # 14: waist_pitch_joint
     # Head.
-    (-0.5236, 0.83775),  # head_pitch_joint
-    (-1.7453, 1.7453),  # head_yaw_joint
-    # Left shoulder.
-    (-2.618, 1.833),  # left_shoulder_pitch_joint
-    (-0.517, 2.494),  # left_shoulder_roll_joint
-    (-2.618, 2.618),  # left_shoulder_yaw_joint
-    # Left.
-    (-0.986, 3.071),  # left_elbow_joint
-    # Left wrist.
-    (-2.618, 2.618),  # left_wrist_roll_joint
-    (-0.576, 0.576),  # left_wrist_pitch_joint
-    (-1.22, 1.22),  # left_wrist_yaw_joint
-    # Right shoulder.
-    (-2.618, 1.833),  # right_shoulder_pitch_joint
-    (-2.494, 0.517),  # right_shoulder_roll_joint
-    (-2.618, 2.618),  # right_shoulder_yaw_joint
-    # Right.
-    (-0.986, 3.071),  # right_elbow_joint
-    # Right wrist.
-    (-2.618, 2.618),  # right_wrist_roll_joint
-    (-0.576, 0.576),  # right_wrist_pitch_joint
-    (-1.22, 1.22),  # right_wrist_yaw_joint
+    (-0.5236, 0.83775),  # 15: head_pitch_joint
+    (-1.7453, 1.7453),  # 16: head_yaw_joint
+    # Left arm.
+    (-2.618, 1.833),  # 17: left_shoulder_pitch_joint
+    (-0.517, 2.494),  # 18: left_shoulder_roll_joint
+    (-2.618, 2.618),  # 19: left_shoulder_yaw_joint
+    (-0.986, 3.071),  # 20: left_elbow_joint
+    (-2.618, 2.618),  # 21: left_wrist_roll_joint
+    (-0.576, 0.576),  # 22: left_wrist_pitch_joint
+    (-1.22, 1.22),  # 23: left_wrist_yaw_joint
+    # Right arm.
+    (-2.618, 1.833),  # 24: right_shoulder_pitch_joint
+    (-2.494, 0.517),  # 25: right_shoulder_roll_joint
+    (-2.618, 2.618),  # 26: right_shoulder_yaw_joint
+    (-0.986, 3.071),  # 27: right_elbow_joint
+    (-2.618, 2.618),  # 28: right_wrist_roll_joint
+    (-0.576, 0.576),  # 29: right_wrist_pitch_joint
+    (-1.22, 1.22),  # 30: right_wrist_yaw_joint
 )
