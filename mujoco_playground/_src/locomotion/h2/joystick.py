@@ -14,6 +14,7 @@
 # ==============================================================================
 """Joystick task for Unitree H2."""
 
+import re
 from typing import Any, Dict, Optional, Union
 
 import jax
@@ -28,6 +29,17 @@ from mujoco_playground._src import mjx_env
 from mujoco_playground._src.locomotion.h2 import base as h2_base
 from mujoco_playground._src.locomotion.h2 import h2_constants as consts
 
+# H2: actuator groups of unitree_rl_mjlab (assets/robots/unitree_h2/h2_constants.py):
+# (joint name patterns, effort_limit, stiffness).
+_MJLAB_ACTUATORS = (
+    ((".*_hip_pitch.*", ".*_hip_roll.*", ".*_hip_yaw.*", ".*_knee.*"), 360.0, 200.0),
+    ((".*_ankle_roll.*",), 19.0, 40.0),
+    ((".*_ankle_pitch.*",), 66.0, 40.0),
+    (("waist_.*",), 120.0, 150.0),
+    ((".*_shoulder_pitch.*", ".*_shoulder_roll.*", ".*_shoulder_yaw.*",
+      ".*_elbow.*", ".*_wrist_roll.*"), 54.0, 40.0),
+    ((".*_wrist_pitch.*", ".*_wrist_yaw.*"), 25.0, 20.0),
+)
 
 def default_config() -> config_dict.ConfigDict:
   return config_dict.create(
@@ -35,7 +47,9 @@ def default_config() -> config_dict.ConfigDict:
       sim_dt=0.002,
       episode_length=1000,
       action_repeat=1,
-      action_scale=0.5,
+      # H2: per-joint scale = action_scale * effort_limit / stiffness [rad], as in
+      # unitree_rl_mjlab (G1: 0.5 for all joints).
+      action_scale=0.25,
       history_len=1,
       restricted_joint_range=False,
       soft_joint_pos_limit_factor=0.95,
@@ -60,16 +74,18 @@ def default_config() -> config_dict.ConfigDict:
               orientation=-2.5,
               base_height=0.0,
               # Energy related rewards.
-              torques=-0.0001,
-              action_rate=-0.02,
-              energy=-0.003,
-              dof_acc=-0.000002,
+              torques=-0.0,
+              action_rate=-0.0,
+              energy=-0.0,
+              dof_acc=-0.0,
               # Feet related rewards.
               feet_clearance=0.0,
               feet_air_time=2.0,
               feet_slip=-0.25,
               feet_height=0.0,
               feet_phase=1.0,
+              # H2: foot tilt (sideways part of each foot's up axis); 0 = off.
+              feet_orientation=0.0,
               # Other rewards.
               alive=0.0,
               stand_still=-1.5,
@@ -84,6 +100,10 @@ def default_config() -> config_dict.ConfigDict:
           ),
           tracking_sigma=0.25,
           max_foot_height=0.15,
+          # H2: fraction of the gait cycle in which feet_phase asks for height 0
+          # (stance). 0.0 = G1 target: the foot rises and falls over the whole
+          # cycle and touches the ground only at one instant.
+          stance_ratio=0.0,
           base_height_target=0.5,
           # H2: G1's 500 N scaled for the ~2.2x heavier robot.
           max_contact_force=1100.0,
@@ -102,6 +122,8 @@ def default_config() -> config_dict.ConfigDict:
       lin_vel_x=[-1.0, 1.0],
       lin_vel_y=[-0.5, 0.5],
       ang_vel_yaw=[-1.0, 1.0],
+      # H2: gait frequency range [Hz], sampled once per episode.
+      gait_frequency=[1.25, 1.5],
       impl="warp",
       naconmax=8 * 8192,
       # H2: 31 joints (G1: 29).
@@ -141,6 +163,19 @@ class Joystick(h2_base.H2Env):
         [i for i in range(self._mj_model.nu) if i not in head_joint_ids]
     )
     model_to_policy = {int(m): p for p, m in enumerate(self._policy_joint_ids)}
+
+    # H2: per-joint action scale [rad per unit action] (policy order).
+    def mjlab_scale(name: str) -> float:
+      return next(
+          self._config.action_scale * effort / kp
+          for patterns, effort, kp in _MJLAB_ACTUATORS
+          if any(re.fullmatch(p, name) for p in patterns)
+      )
+
+    self._action_scale = jp.array([
+        mjlab_scale(self._mj_model.joint(int(i) + 1).name)
+        for i in self._policy_joint_ids
+    ])
 
     self._init_q = jp.array(self._mj_model.keyframe("knees_bent").qpos)
     # H2: full ctrl (31, model order); the head targets stay at these values.
@@ -300,9 +335,14 @@ class Joystick(h2_base.H2Env):
     )
     data = mjx.forward(self.mjx_model, data)
 
-    # Phase, freq=U(1.0, 1.5)
+    # Phase, freq=U(gait_frequency) (default U(1.25, 1.5)).
     rng, key = jax.random.split(rng)
-    gait_freq = jax.random.uniform(key, (1,), minval=1.25, maxval=1.5)
+    gait_freq = jax.random.uniform(
+        key,
+        (1,),
+        minval=self._config.gait_frequency[0],
+        maxval=self._config.gait_frequency[1],
+    )
     phase_dt = 2 * jp.pi * self.dt * gait_freq
     phase = jp.array([0, jp.pi])
 
@@ -373,7 +413,7 @@ class Joystick(h2_base.H2Env):
 
     # H2: actions move the policy joints; the head targets stay unchanged.
     motor_targets = self._default_ctrl.at[self._policy_joint_ids].add(
-        action * self._config.action_scale
+        action * self._action_scale
     )
     data = mjx_env.step(
         self.mjx_model, state.data, motor_targets, self.n_substeps
@@ -609,6 +649,7 @@ class Joystick(h2_base.H2Env):
             self._config.reward_config.max_foot_height,
             info["command"],
         ),
+        "feet_orientation": self._cost_feet_orientation(data),
         # Other rewards.
         "alive": self._reward_alive(),
         "termination": self._cost_termination(done),
@@ -716,7 +757,7 @@ class Joystick(h2_base.H2Env):
     return jp.sum(jp.square(global_angvel_torso[:2]))
 
   def _cost_orientation(self, torso_zaxis: jax.Array) -> jax.Array:
-    return jp.sum(jp.square(torso_zaxis - jp.array([0.073, 0.0, 1.0])))
+    return jp.sum(jp.square(torso_zaxis - jp.array([0.0, 0.0, 1.0])))
 
   def _cost_base_height(self, base_height: jax.Array) -> jax.Array:
     return jp.square(
@@ -812,7 +853,13 @@ class Joystick(h2_base.H2Env):
     # Reward for tracking the desired foot height.
     foot_pos = data.site_xpos[self._feet_site_id]
     foot_z = foot_pos[..., -1]
-    rz = gait.get_rz(phase, swing_height=foot_height)
+    # H2: optional stance part. x in [0, 1) is the position in the gait cycle;
+    # for x < stance_ratio the target is 0, the swing curve of gait.get_rz is
+    # squeezed into the rest. stance_ratio = 0 gives exactly gait.get_rz(phase).
+    stance = self._config.reward_config.stance_ratio
+    x = (phase + jp.pi) / (2 * jp.pi)
+    u = jp.clip((x - stance) / (1.0 - stance), 0.0, 1.0)
+    rz = gait.get_rz(u * 2 * jp.pi - jp.pi, swing_height=foot_height)
     error = jp.sum(jp.square(foot_z - rz))
     reward = jp.exp(-error / 0.01)
     body_linvel = self.get_global_linvel(data, "pelvis")[:2]
@@ -824,6 +871,13 @@ class Joystick(h2_base.H2Env):
     mask = jp.logical_or(linvel_mask, jp.linalg.norm(command) > 0.01)
     reward *= mask
     return reward
+
+  def _cost_feet_orientation(self, data: mjx.Data) -> jax.Array:
+    # H2: x/y components of each foot's up axis in the world frame
+    # (= sin^2 of the foot tilt); 0 when the sole is level.
+    up_l = mjx_env.get_sensor_data(self.mj_model, data, "left_foot_upvector")
+    up_r = mjx_env.get_sensor_data(self.mj_model, data, "right_foot_upvector")
+    return jp.sum(jp.square(up_l[:2])) + jp.sum(jp.square(up_r[:2]))
 
   def sample_command(self, rng: jax.Array) -> jax.Array:
     rng1, rng2, rng3, rng4 = jax.random.split(rng, 4)

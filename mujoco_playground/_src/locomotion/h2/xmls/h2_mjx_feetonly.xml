@@ -210,8 +210,8 @@
                 <geom class="visual" mesh="left_ankle_roll_link"/>
                 <!-- Foot body: ankle pitch link, after ankle roll (G1: the reverse). -->
                 <body name="left_ankle_pitch_link" pos="-0.014516 -0.0373 0">
-                  <!-- Foot-body origin as in G1, 0.058 m above the sole (G1: 0.037 m). -->
-                  <site name="left_foot" rgba="1 0 0 1"/>
+                  <!-- Sole centre (bottom of the foot box), as in [MJLAB]. -->
+                  <site name="left_foot" rgba="1 0 0 1" pos="0.0375 0.0365 -0.058"/>
                   <inertial pos="0.032059 0.0370053 -0.0288282" quat="6.19452e-05 0.72345 -3.0004e-05 0.690377"
                     mass="0.894967" diaginertia="0.00438317 0.00410964 0.000599978"/>
                   <joint name="left_ankle_pitch_joint" class="ankle_pitch"/>
@@ -255,7 +255,7 @@
                 <joint name="right_ankle_roll_joint" class="ankle_roll" range="-0.296706 0.349066"/>
                 <geom class="visual" mesh="right_ankle_roll_link"/>
                 <body name="right_ankle_pitch_link" pos="-0.014516 0.0373 0">
-                  <site name="right_foot" rgba="1 0 0 1"/>
+                  <site name="right_foot" rgba="1 0 0 1" pos="0.0375 -0.0365 -0.058"/>
                   <inertial pos="0.032059 -0.0370053 -0.0288282" quat="-6.19452e-05 0.72345 3.0004e-05 0.690377"
                     mass="0.894967" diaginertia="0.00438317 0.00410964 0.000599978"/>
                   <joint name="right_ankle_pitch_joint" class="ankle_pitch"/>

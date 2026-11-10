@@ -58,7 +58,8 @@ def main():
     args = parser.parse_args()
 
     print(f"Loading environment: {args.env_name}")
-    env = registry.load(args.env_name)
+    # env = registry.load(args.env_name)
+    env = registry.load(args.env_name, config_overrides={"impl": "jax"})
 
     # 1. Load Architecture Config
     config_path = os.path.join(args.checkpoint, "ppo_network_config.json")

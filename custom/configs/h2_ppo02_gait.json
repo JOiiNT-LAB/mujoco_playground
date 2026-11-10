@@ -1,0 +1,10 @@
+{
+  "gait_frequency": [1.0, 1.25],
+  "reward_config.stance_ratio": 0.6,
+  "reward_config.max_foot_height": 0.12,
+  "reward_config.scales.feet_orientation": -1.0,
+  "reward_config.scales.action_rate": -0.1,
+  "reward_config.scales.dof_acc": -1e-6,
+  "reward_config.scales.energy": -0.0005,
+  "push_config.magnitude_range": [0.1, 1.0]
+}
